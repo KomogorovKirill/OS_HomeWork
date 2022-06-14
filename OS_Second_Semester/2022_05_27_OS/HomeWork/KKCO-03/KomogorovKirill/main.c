@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include "crc32.h"
 #include "rc4.h"
 
@@ -15,60 +16,41 @@ void __attribute__((section(".upx"))) hello_world()
 extern char upx_end;
 extern char upx_start;
 
-char* upx_dec_sect(char* password)
-{
-  	size_t SizeSection = (&upx_end) - (&upx_start);
-  	unsigned char *deciphertext = malloc(SizeSection);
-  	unsigned char *ciphertext = malloc(SizeSection);
-
-  	RC4(password, &upx_start, deciphertext, SizeSection);
-
-  	if(crc32(deciphertext, SizeSection) == *(int*)(&upx_end))
-  	{
-    		memcpy(ciphertext, &upx_start, SizeSection);
-   	 	memcpy(&upx_start, deciphertext, SizeSection);
-  	}
-  	else 
-  	{
-    		puts("You password invalid!");
-    		free(ciphertext);
-    		return NULL;
-  	}
-    
-  	free(deciphertext);
-  	return ciphertext;
-}
-
 int main(int argc, char *argv[])
 {
-  	void *ptr = NULL;
-  	char* ciphertext;
 	int page_size = sysconf(_SC_PAGE_SIZE), mpr_status = 0;
-
+	size_t SizeSection = (&upx_end) - (&upx_start);
+  	unsigned char *dec = (unsigned char *) malloc(SizeSection);
   	if(argc != 2)
   	{
     		printf("Usage: %s <key>\n", argv[0]);
     		exit(1);
   	}
 
-  	ptr = &upx_start;
+  	void *ptr = &upx_start;
   	ptr -= ((off_t)ptr) & (page_size - 1);
 	mpr_status = mprotect(ptr , page_size , PROT_READ|PROT_WRITE|PROT_EXEC);
-  	if (mpr_status == -1)
+  	if (-1 == mpr_status)
 	{
     		perror("mprotect");
     		exit(2);
   	}
 
-  	ciphertext = upx_dec_sect(argv[1]);
-  	if (NULL == ciphertext)
+  	RC4(argv[1], &upx_start, dec, SizeSection);
+
+  	if(crc32(dec, SizeSection) == *(uint32_t *)(&upx_end))
   	{
-    		puts("Error decoding section!");
+
+   	 	memcpy(&upx_start, dec, SizeSection);
+  	}
+  	else 
+  	{
+    		puts("You password invalid!");
+		free(dec);
     		exit(3);
   	}
 
   	hello_world();
-  	memcpy(&upx_start, ciphertext, (&upx_end) - (&upx_start));
-  	free(ciphertext);
+  	free(dec);
   	return 0;
 }
