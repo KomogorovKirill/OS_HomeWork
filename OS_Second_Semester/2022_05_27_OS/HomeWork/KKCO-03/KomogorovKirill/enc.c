@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
+#include <stdint.h>
 #include <sys/mman.h>
 #include "elf_upx.h"
 #include "rc4.h"
@@ -9,9 +10,8 @@
 
 int main(int argc, char *argv[])
 {
-	unsigned char *ciphertext = NULL, *ptr = NULL;
-    	char* data = NULL;
-    	int size = 0, fd = 0, CRC = 0;
+	unsigned char *ptr = NULL;
+    	int sizeSect = 0, fd = 0, CRC = 0;
     	struct stat st;
     	off_t offset;
     	size_t pageSize = sysconf(_SC_PAGESIZE), nsize = 0;
@@ -28,7 +28,7 @@ int main(int argc, char *argv[])
         	exit(2);
     	}
     
-    	data = malloc(st.st_size * sizeof(char));
+    	char *data = (char *) malloc(st.st_size * sizeof(char));
 
     	if (NULL == data)
     	{
@@ -45,7 +45,7 @@ int main(int argc, char *argv[])
     
     	read(fd, data, st.st_size);
     	
-    	if (get_elf_section( ".upx", data, st.st_size, &offset, &size))
+    	if (get_elf_section( ".upx", data, st.st_size, &offset, &sizeSect))
     	{
         	printf("File %s not found...\n", argv[2]);
         	exit(5);
@@ -61,17 +61,17 @@ int main(int argc, char *argv[])
         	exit(6);
     	}
 
-    	ciphertext = malloc(size - 4);  
+    	unsigned char *bytes = (unsigned char *) malloc(sizeSect - 4);  
     
-    	RC4(argv[1], ptr + offset, ciphertext, size - 4);
+	CRC = crc32(ptr + offset, sizeSect - 4);
+    	RC4(argv[1], ptr + offset, bytes, sizeSect - 4);
 
-    	CRC = crc32(ptr + offset, size - 4);
-    	memcpy(ptr + offset, ciphertext, size - 4);
-    	*(int *)(ptr+offset+size - 4) = CRC;
+    	memcpy(ptr + offset, bytes, sizeSect - 4);
+    	*(uint32_t *)(ptr + offset + sizeSect - 4) = CRC;
 
     	munmap(ptr, nsize);
-   	free(data);
-   	free(ciphertext);
 	close(fd);
+   	free(data);
+   	free(bytes);
     	return 0;
 }
